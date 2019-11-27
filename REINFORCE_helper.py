@@ -20,3 +20,6 @@ class RunningVariance:
 
     def get_variance(self, epsilon=1e-12):
         return self.s_k / (self.k - 1 + epsilon) + epsilon
+    
+    def get_mean(self):
+        return self.m_k
