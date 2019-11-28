@@ -163,27 +163,41 @@ class BaseAgent:
                     clip.write_gif(gif_name, fps=fps, verbose=False, logger=None)
                 return np.array(observations), np.array(actions), np.array(predictions), np.array(discounted_rewards), np.array(rewards), np.array(episodes_returns), np.array(episodes_lenghts)
 
-class RunningVariance:
-    # Keeps a running estimate of variance
-
-    def __init__(self):
-        self.m_k = None
-        self.s_k = None
-        self.k = None
-
-    def add(self, x):
-        if not self.m_k:
-            self.m_k = x
-            self.s_k = 0
-            self.k = 0
-        else:
-            old_mk = self.m_k
-            self.k += 1
-            self.m_k += (x - self.m_k) / self.k
-            self.s_k += (x - old_mk) * (x - self.m_k)
-
-    def get_variance(self, epsilon=1e-12):
-        return self.s_k / (self.k - 1 + epsilon) + epsilon
+class ReinforceAgent(BaseAgent):
+    # def __init__(self):
+    def get_policy_model(self, lr=0.001, hidden_layer_neurons = 128, input_shape=[4], output_shape=2):
+        ## Defino métrica - loss sin el retorno multiplicando
+        def loss_metric(y_true, y_pred):
+            y_true_norm = K.sign(y_true)
+            return K.categorical_crossentropy(y_true_norm, y_pred)
+        model = Sequential()
+        model.add(Dense(hidden_layer_neurons, input_shape=input_shape, activation='relu'))
+        model.add(Dense(output_shape, activation='softmax'))
+        ## Por que la categorical_crossentropy funciona ok?
+        model.compile(Adam(lr), loss=['categorical_crossentropy'], metrics=[loss_metric])
+        return model
     
-    def get_mean(self):
-        return self.m_k
+    def get_action(self, eval=False):
+        p = self.model.predict([self.observation.reshape(1, self.nS)])
+        if eval is False:
+            action = np.random.choice(self.nA, p=p[0]) #np.nan_to_num(p[0])
+        else:
+            action = np.argmax(p[0])
+        action_one_hot = np.zeros(self.nA)
+        action_one_hot[action] = 1
+        return action, action_one_hot, p
+    
+    def get_entropy(self, preds, epsilon=1e-12):
+        entropy = np.mean(-np.sum(np.log(preds+epsilon)*preds, axis=1)/np.log(self.nA))
+        return entropy
+    
+    def get_discounted_rewards(self, r):
+        # Por si es una lista
+        r = np.array(r, dtype=float)
+        """Take 1D float array of rewards and compute discounted reward """
+        discounted_r = np.zeros_like(r)
+        running_add = 0
+        for t in reversed(range(0, r.size)):
+            running_add = running_add * self.gamma + r[t]
+            discounted_r[t] = running_add
+        return discounted_r
