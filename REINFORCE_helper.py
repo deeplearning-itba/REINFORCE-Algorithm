@@ -9,7 +9,8 @@ import keras.backend as K
 from tensorboardX import SummaryWriter
 
 class BaseAgent:
-    def __init__(self, ENV, logdir_root='logs', n_experience_episodes=1, gamma=0.999, epochs=1, lr=0.001, hidden_layer_neurons=128, EPISODES=2000, eval_period=50):
+    def __init__(self, ENV, logdir_root='logs', n_experience_episodes=1, gamma=0.999, epochs=1, lr=0.001, hidden_layer_neurons=128, EPISODES=2000, eval_period=50, algorithm='REINFORCE'):
+        self.last_eval = 0
         self.best_return = -np.inf
         self.eval_period = 50
         self.writer = None
@@ -21,7 +22,7 @@ class BaseAgent:
         self.gamma = gamma
         self.epochs = epochs
         self.lr = lr
-        self.logdir = self.get_log_name(ENV, 'REINFORCE', logdir_root)
+        self.logdir = self.get_log_name(ENV, algorithm, logdir_root)
         self.env = gym.make(ENV)
         self.nA = self.env.action_space.n
         if type(self.env.observation_space) == gym.spaces.box.Box:
@@ -108,7 +109,7 @@ class BaseAgent:
         self.writer.add_scalar('time', deltaT, episode)
         if critic_loss is not None:
             self.writer.add_scalar('critic_loss', critic_loss, episode)
-        if (self.episode + 1) % self.eval_period == 0:
+        if self.episode - self.last_eval >= self.eval_period:
             obs, actions, preds, disc_sum_rews, rewards, ep_returns, ep_len = self.get_eval_episode()
             if self.best_return <= ep_returns[-1]:
                 self.model.save(self.logdir + '.hdf5')
@@ -117,6 +118,7 @@ class BaseAgent:
                 self.best_return = ep_returns[-1]
             self.writer.add_scalar('eval_episode_steps', len(obs), self.episode)
             self.writer.add_scalar('eval_episode_return', ep_returns[-1], episode)
+            self.last_eval = self.episode
             
     def get_eval_episode(self, gif_name=None):
         frames=[]
