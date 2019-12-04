@@ -24,7 +24,11 @@ def format_as_pandas(time_step, obs, preds, actions, rewards, disc_sum_rews, ep_
     return df
 
 class BaseAgent:
-    def __init__(self, ENV, logdir_root='logs', n_experience_episodes=1, gamma=0.999, epochs=1, lr=0.001, hidden_layer_neurons=128, EPISODES=2000, eval_period=50, algorithm='REINFORCE', noise=1.0):
+    def __init__(self, ENV, logdir_root='logs', n_experience_episodes=1, gamma=0.999, epochs=1, lr=0.001, hidden_layer_neurons=128, EPISODES=2000, eval_period=50, algorithm='REINFORCE', noise=1.0, gif_to_board=False, fps=50, batch_size=128):
+        self.hidden_layer_neurons = hidden_layer_neurons
+        self.batch_size = batch_size
+        self.fps = fps
+        self.gif_to_board = gif_to_board
         self.noise = noise
         self.last_eval = 0
         self.best_return = -np.inf
@@ -70,6 +74,7 @@ class BaseAgent:
         name += ENV + '/' + algorithm + '/'
         name += str(self.n_experience_episodes) + '_'
         name += str(self.epochs) + '_'
+        name += str(self.batch_size) + '_'
         name += str(self.gamma) + '_'
         name += str(self.lr) + '_'  + str(int(time()))
         return name
@@ -147,17 +152,26 @@ class BaseAgent:
         if critic_loss is not None:
             self.writer.add_scalar('critic_loss', critic_loss, episode)
         if self.episode - self.last_eval >= self.eval_period:
-            obs, actions, preds, disc_sum_rews, rewards, ep_returns, ep_len = self.get_eval_episode()
+            if self.gif_to_board:
+                obs, actions, preds, disc_sum_rews, rewards, ep_returns, ep_len, frames = self.get_eval_episode(return_frames=self.gif_to_board)
+            else:
+                obs, actions, preds, disc_sum_rews, rewards, ep_returns, ep_len = self.get_eval_episode(return_frames=self.gif_to_board)
             if self.best_return <= ep_returns[-1]:
                 self.model.save(self.logdir + '.hdf5')
                 print()
                 print(f'Model on episode {self.episode - 1} improved from {self.best_return} to {ep_returns[-1]}. Saved!')
                 self.best_return = ep_returns[-1]
+                if self.gif_to_board:
+                    video = frames.reshape((1, )+frames.shape)
+                    gif_name =  str(self.episode) + '_' + self.logdir.replace('logs/', '').replace('/','_') 
+                    self.writer.add_video(gif_name, np.rollaxis(video, 4, 2), fps=self.fps)
+                
+                
             self.writer.add_scalar('eval_episode_steps', len(obs), self.episode)
             self.writer.add_scalar('eval_episode_return', ep_returns[-1], episode)
             self.last_eval = self.episode
             
-    def get_eval_episode(self, gif_name=None, fps=50):
+    def get_eval_episode(self, gif_name=None, fps=50, return_frames=False):
         frames=[]
         self.reset_env()
         observations = []
@@ -168,7 +182,7 @@ class BaseAgent:
         episodes_returns = []
         episodes_lenghts = []
         exp_episodes = 0
-        if gif_name is not None:
+        if gif_name is not None or return_frames:
             frames.append(self.env.render(mode = 'rgb_array'))
         while True:
             # Juega episodios hasta juntar un tamaño de buffer mínimo
@@ -183,7 +197,7 @@ class BaseAgent:
             predictions.append(prediction.flatten())
             rewards.append(reward)
             self.observation = observation
-            if gif_name is not None:
+            if gif_name is not None or return_frames:
                 frames.append(self.env.render(mode = 'rgb_array'))
             if done:
                 exp_episodes += 1
@@ -196,7 +210,10 @@ class BaseAgent:
                 if gif_name is not None:
                     clip = mpy.ImageSequenceClip(frames, fps=fps)
                     clip.write_gif(gif_name, fps=fps, verbose=False, logger=None)
+                if return_frames:
+                    return np.array(observations), np.array(actions), np.array(predictions), np.array(discounted_rewards), np.array(rewards), np.array(episodes_returns), np.array(episodes_lenghts), np.array(frames)
                 return np.array(observations), np.array(actions), np.array(predictions), np.array(discounted_rewards), np.array(rewards), np.array(episodes_returns), np.array(episodes_lenghts)
+            
 
 class RunningVariance:
     # Keeps a running estimate of variance
