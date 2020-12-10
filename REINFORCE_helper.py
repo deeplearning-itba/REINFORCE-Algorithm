@@ -135,7 +135,7 @@ class BaseAgent:
             return np.array(observations), np.array(actions), np.array(predictions), np.array(discounted_rewards), np.array(rewards), np.array(episodes_returns), np.array(episodes_lenghts), self.last_observation
         
     
-    def log_data(self, episode, loss, ep_len_mean, entropy, rv, nomalized_loss, deltaT, ep_return, critic_loss=None):
+    def log_data(self, episode, loss, ep_len_mean, entropy, rv, nomalized_loss, deltaT, ep_return, critic_loss=None, rv_normalized=None):
         if self.writer is None:
             self.writer = SummaryWriter(self.logdir)
             print(f"correr en linea de comando: tensorboard --logdir {self.logdir_root}/")
@@ -146,6 +146,8 @@ class BaseAgent:
         self.writer.add_scalar('entropy', entropy, episode)
         self.writer.add_scalar('running_var', rv, episode)
         self.writer.add_scalar('episode_return', ep_return, episode)
+        if rv_normalized:
+            self.writer.add_scalar('running_var_nomalized', rv_normalized, episode)
         if nomalized_loss is not None:
             self.writer.add_scalar('normalized_loss', nomalized_loss, episode)
         self.writer.add_scalar('time', deltaT, episode)
